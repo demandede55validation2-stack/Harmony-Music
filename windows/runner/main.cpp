@@ -7,6 +7,29 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  // --- Instance unique -------------------------------------------------
+  // Si Harmony Music tourne déjà (y compris caché dans la zone de
+  // notification), on ramène sa fenêtre au premier plan et on quitte,
+  // au lieu de lancer un second processus qui ne peut pas ouvrir les
+  // bases Hive déjà verrouillées.
+  HANDLE single_instance_mutex = ::CreateMutexW(
+      nullptr, TRUE, L"Local\\com.northabyss.harmonymusic.single_instance");
+  if (single_instance_mutex != nullptr &&
+      ::GetLastError() == ERROR_ALREADY_EXISTS) {
+    HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW",
+                                  L"Harmony Music");
+    if (existing != nullptr) {
+      if (::IsIconic(existing)) {
+        ::ShowWindow(existing, SW_RESTORE);
+      } else {
+        ::ShowWindow(existing, SW_SHOW);
+      }
+      ::SetForegroundWindow(existing);
+    }
+    ::CloseHandle(single_instance_mutex);
+    return EXIT_SUCCESS;
+  }
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
