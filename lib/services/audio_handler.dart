@@ -224,6 +224,10 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
     });
   }
 
+  // Évite de déclencher deux fois le passage au titre suivant
+  // (via la position ET via l'événement "completed").
+  bool _endHandled = false;
+
   void _listenToPlaybackForNextSong() {
     final playerDurationOffset = GetPlatform.isWindows
         ? 200
@@ -231,11 +235,30 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
             ? 700
             : 0;
     _player.positionStream.listen((value) async {
-      if (_player.duration != null && _player.duration?.inSeconds != 0) {
+      final duration = _player.duration;
+      if (duration != null && duration.inSeconds != 0) {
         if (value.inMilliseconds >=
-            (_player.duration!.inMilliseconds - playerDurationOffset)) {
+            (duration.inMilliseconds - playerDurationOffset)) {
+          if (_endHandled) return;
+          _endHandled = true;
           await _triggerNext();
+        } else if (value.inMilliseconds <
+            (duration.inMilliseconds - playerDurationOffset - 1000)) {
+          // On est loin de la fin : on réarme le déclencheur
+          _endHandled = false;
         }
+      }
+    });
+
+    // Filet de sécurité : sous Windows (media_kit/libmpv), la position peut
+    // ne jamais atteindre (durée - offset) avant que le lecteur ne passe
+    // à l'état "completed" et ne remette la position à 0.
+    _player.processingStateStream.listen((state) async {
+      if (state == ProcessingState.completed &&
+          !_endHandled &&
+          !isSongLoading) {
+        _endHandled = true;
+        await _triggerNext();
       }
     });
   }
